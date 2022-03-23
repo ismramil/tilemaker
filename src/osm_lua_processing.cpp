@@ -58,6 +58,7 @@ OsmLuaProcessing::OsmLuaProcessing(
 		.addFunction("ZOrder", &OsmLuaProcessing::ZOrder)
 		.addFunction("Accept", &OsmLuaProcessing::Accept)
 		.addFunction("NextRelation", &OsmLuaProcessing::NextRelation)
+		.addFunction("GetRelationSize", &OsmLuaProcessing::GetRelationSize)
 		.addFunction("FindInRelation", &OsmLuaProcessing::FindInRelation)
 	);
 	supportsRemappingShapefiles = !!luaState["attribute_function"];
@@ -510,6 +511,10 @@ kaguya::optional<int> OsmLuaProcessing::NextRelation() {
 	return relationList[relationSubscript];
 }
 
+kaguya::optional<int> OsmLuaProcessing::GetRelationSize() {
+	return relationsSize;
+}
+
 std::string OsmLuaProcessing::FindInRelation(const std::string &key) {
 	return osmStore.get_relation_tag(relationList[relationSubscript], key);
 }
@@ -574,6 +579,7 @@ void OsmLuaProcessing::setWay(WayID wayId, LatpLonVec const &llVec, const tag_ma
 
 	if (supportsReadingRelations && osmStore.way_in_any_relations(wayId)) {
 		relationList = osmStore.relations_for_way(wayId);
+		relationsSize = relationList.size();
 	} else {
 		relationList.clear();
 	}

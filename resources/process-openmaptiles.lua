@@ -1,4 +1,4 @@
--- Data processing based on openmaptiles.org schema
+﻿-- Data processing based on openmaptiles.org schema
 -- https://openmaptiles.org/schema/
 -- Copyright (c) 2016, KlokanTech.com & OpenMapTiles contributors.
 -- Used under CC-BY 4.0
@@ -7,13 +7,13 @@
 -- Alter these lines to control which languages are written for place/streetnames
 --
 -- Preferred language can be (for example) "en" for English, "de" for German, or nil to use OSM's name tag:
-preferred_language = nil
+preferred_language = "uk"
 -- This is written into the following vector tile attribute (usually "name:latin"):
-preferred_language_attribute = "name:latin"
+preferred_language_attribute = "name:uk"
 -- If OSM's name tag differs, then write it into this attribute (usually "name_int"):
 default_language_attribute = "name_int"
 -- Also write these languages if they differ - for example, { "de", "fr" }
-additional_languages = { }
+additional_languages = { "de", "fr", "uk", "int" }
 --------
 
 -- Enter/exit Tilemaker
@@ -79,14 +79,23 @@ function node_function(node)
 		local rank = nil
 		local mz = 13
 		local pop = tonumber(node:Find("population")) or 0
-
+		local capital = 0
 		if     place == "continent"     then mz=0
 		elseif place == "country"       then
 			if     pop>50000000 then rank=1; mz=1
 			elseif pop>20000000 then rank=2; mz=2
 			else                     rank=3; mz=3 end
 		elseif place == "state"         then mz=4
-		elseif place == "city"          then mz=5
+		elseif place == "city"			then mz=5
+                        if(node:Holds("capital")) then
+                                if(node:Find("capital")=="yes") then
+                                        capital = 2
+                                else
+                                        capital = tonumber(node:Find("capital"))
+
+                                end
+                        end
+                        if(capital > 0) then rank = capital else rank = 10 end
 		elseif place == "town" and pop>8000 then mz=7
 		elseif place == "town"          then mz=8
 		elseif place == "village" and pop>2000 then mz=9
@@ -96,13 +105,18 @@ function node_function(node)
 		elseif place == "neighbourhood" then mz=13
 		elseif place == "locality"      then mz=13
 		end
-
-		node:Layer("place", false)
-		node:Attribute("class", place)
-		node:MinZoom(mz)
-		if rank then node:AttributeNumeric("rank", rank) end
-		if place=="country" then node:Attribute("iso_a2", node:Find("ISO3166-1:alpha2")) end
-		SetNameAttributes(node)
+		if(node:Id() ~= "265099148" and node:Id()~="128554280")  then
+                        node:Layer("place", false)
+                        node:Attribute("note", node:Id())
+                        if(capital>0) then
+                                node:AttributeNumeric("capital", capital)
+                        end
+                        node:Attribute("class", place)
+                        node:MinZoom(mz)
+                        if rank then node:AttributeNumeric("rank", rank) end
+                        if place=="country" then node:Attribute("iso_a2", node:Find("ISO3166-1:alpha2")) end
+                        SetNameAttributes(node)
+        end
 		return
 	end
 
@@ -210,6 +224,21 @@ function relation_scan_function(relation)
 	end
 end
 
+local function isempty(s)
+  return s == nil or s == ''
+end
+
+
+local function has_value (tab, val)
+    for index, value in ipairs(tab) do
+        if value == val then
+            return true
+        end
+    end
+
+    return false
+end
+
 -- Process way tags
 
 function way_function(way)
@@ -247,11 +276,23 @@ function way_function(way)
 	-- Boundaries within relations
 	local admin_level = 11
 	local isBoundary = false
+	local relationId = 0
+    local relationName = ""
+    local relationsCount = 0
+	local admin_level_rel = 11
 	while true do
 		local rel = way:NextRelation()
 		if not rel then break end
+		relationsCount = way:GetRelationSize()
 		isBoundary = true
+		if not isempty(way:FindInRelation("admin_level")) then admin_level_rel = tonumber(way:FindInRelation("admin_level")) end
 		admin_level = math.min(admin_level, tonumber(way:FindInRelation("admin_level")) or 11)
+        relationName=relationName..tostring(rel)
+        if not isempty(way:FindInRelation("name")) then relationName = relationName.. way:FindInRelation("name")  end
+        --print(way:FindInRelation("name")..tostring(isempty(way:FindInRelation("admin_level"))))
+        --print(way:FindRelation("name").. way:FindInRelation("admin_level"))
+        --relationName = relationName .. rel.." "..way:FindInRelation("Id")..way:FindInRelation("name")..way:FindInRelation("admin_level")
+        --admin_level = math.min(admin_level, tonumber(way:FindInRelation("Admin_level")) or 11)
 	end
 
 	-- Boundaries in ways
@@ -262,6 +303,9 @@ function way_function(way)
 	
 	-- Administrative boundaries
 	-- https://openmaptiles.org/schema/#boundary
+	local wrongIds = {"215350126", "177201732", "54240310", "83806526", "111303167", "173486397", "111303158", "157659376", "22069714", "70119963", "766741568", "62082604", "82740463", "29078319", "102165267"}
+	local isNotFailBoundary =  has_value(wrongIds, way:Id())   --((way:Id() ~= "215350126") and (way:Id() ~= "177201732") and (way:Id() ~="54240310") and (way:Id() ~= "83806526"))
+    isBoundary = isBoundary and not  isNotFailBoundary
 	if isBoundary and not (way:Find("maritime")=="yes") then
 		local mz = 0
 		if     admin_level>=3 and admin_level<5 then mz=4
@@ -271,7 +315,7 @@ function way_function(way)
 		end
 
 		way:Layer("boundary",false)
-		way:AttributeNumeric("admin_level", admin_level)
+		
 		way:MinZoom(mz)
 		-- disputed status (0 or 1). some styles need to have the 0 to show it.
 		local disputed = way:Find("disputed")
@@ -280,6 +324,25 @@ function way_function(way)
 		else
 			way:AttributeNumeric("disputed", 0)
 		end
+		if disputed=="yes" and admin_level==2 then admin_level=4 end
+		way:AttributeNumeric("admin_level", admin_level)
+		way:Attribute("note", relationName.." relations count:"..tostring(relationsCount).." way id:"..tostring(way:Id()))
+	elseif isBoundary then
+        local mzoom = 2
+        way:AttributeNumeric("maritime", 1)
+        way:MinZoom(mzoom)
+        -- disputed status (0 or 1). some styles need to have the 0 to show it.
+        local disputed = way:Find("disputed")
+        if disputed=="yes" then
+			way:AttributeNumeric("disputed", 0)
+        else
+			way:AttributeNumeric("disputed", 0)
+        end
+        if way:Id() == "169719927668736" then way:AttributeNumeric("disputed",1) end
+        if disputed=="yes" and admin_level==2  then admin_level=4 end
+        way:Layer("boundary",false)
+        way:AttributeNumeric("admin_level", admin_level)
+        way:Attribute("note", relationName.." relations count:"..tostring(relationsCount).." way id:"..tostring(way:Id()))
 	end
 
 	-- Roads ('transportation' and 'transportation_name', plus 'transportation_name_detail')
@@ -578,7 +641,11 @@ function SetNameAttributes(obj)
 	local main_written = name
 	-- if we have a preferred language, then write that (if available), and additionally write the base name tag
 	if preferred_language and obj:Holds("name:"..preferred_language) then
-		iname = obj:Find("name:"..preferred_language)
+		if obj:Find("name:"..preferred_language)=="Республіка Крим" then
+			iname = ""
+	    else
+			iname = obj:Find("name:"..preferred_language)
+		end
 		obj:Attribute(preferred_language_attribute, iname)
 		if iname~=name and default_language_attribute then
 			obj:Attribute(default_language_attribute, name)
@@ -588,7 +655,7 @@ function SetNameAttributes(obj)
 	end
 	-- then set any additional languages
 	for i,lang in ipairs(additional_languages) do
-		iname = obj:Find("name:"..lang)
+		if obj:Find("name:"..lang)=="Республіка Крим" then iname = "" else iname = obj:Find("name:"..lang) end
 		if iname=="" then iname=name end
 		if iname~=main_written then obj:Attribute("name:"..lang, iname) end
 	end

@@ -164,6 +164,7 @@ public:
 	
 	// Relation scan support
 	kaguya::optional<int> NextRelation();
+	kaguya::optional<int> GetRelationSize();
 	std::string FindInRelation(const std::string &key);
 	void Accept();
 
@@ -226,6 +227,7 @@ private:
 	bool relationAccepted;					// in scanRelation, whether we're using a non-MP relation
 	std::vector<WayID> relationList;		// in processWay, list of relations this way is in
 	int relationSubscript = -1;				// in processWay, position in the relation list
+	int relationsSize = -1;
 
 	int32_t lon,latp;						///< Node coordinates
 	LatpLonVec const *llVecPtr;
